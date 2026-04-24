@@ -1,0 +1,19 @@
+# OS
+Thumbs.db
+.DS_Store
+
+# Editor
+.vs/
+.idea/
+.vscode/
+
+# Unity temp files if someone opens this repo as a project root
+Library/
+Logs/
+Temp/
+Obj/
+UserSettings/
+MemoryCaptures/
+Build/
+Builds/
+
