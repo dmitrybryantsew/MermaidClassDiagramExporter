@@ -29,6 +29,8 @@ internal sealed class GraphCanvasView : VisualElement
     private float zoom = 1f;
     private bool isPanning;
     private Vector2 lastPointerPosition;
+    private string pendingFocusNodeId = string.Empty;
+    private bool pendingCenterGraph;
 
     public GraphCanvasView()
     {
@@ -84,6 +86,7 @@ internal sealed class GraphCanvasView : VisualElement
         RegisterCallback<MouseMoveEvent>(OnMouseMove);
         RegisterCallback<MouseUpEvent>(OnMouseUp);
         RegisterCallback<MouseLeaveEvent>(OnMouseLeave);
+        RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
     }
 
     public event Action<TypeNodeData> NodeSelected;
@@ -95,6 +98,8 @@ internal sealed class GraphCanvasView : VisualElement
         graph = value;
         layoutResult = layout;
         selectedNodeId = string.Empty;
+        pendingFocusNodeId = string.Empty;
+        pendingCenterGraph = false;
         nodeRects.Clear();
         nodeElements.Clear();
         groupElements.Clear();
@@ -140,16 +145,40 @@ internal sealed class GraphCanvasView : VisualElement
 
     public void FocusNode(string nodeId)
     {
-        if (string.IsNullOrEmpty(nodeId) || !nodeRects.TryGetValue(nodeId, out Rect rect))
+        pendingCenterGraph = false;
+        pendingFocusNodeId = nodeId ?? string.Empty;
+        TryFocusPendingNode();
+    }
+
+    public void CenterGraph()
+    {
+        pendingFocusNodeId = string.Empty;
+        pendingCenterGraph = true;
+        TryCenterGraph();
+    }
+
+    private bool TryFocusPendingNode()
+    {
+        if (string.IsNullOrEmpty(pendingFocusNodeId) || !nodeRects.TryGetValue(pendingFocusNodeId, out Rect rect))
         {
-            return;
+            return false;
         }
 
-        Vector2 targetCenter = rect.center;
-        Vector2 viewportCenter = new Vector2(layout.width * 0.5f, layout.height * 0.5f);
-        Vector2 transformOrigin = GetViewportTransformOrigin();
-        pan = viewportCenter - transformOrigin - ((targetCenter - transformOrigin) * zoom);
-        ApplyTransform();
+        CenterPointInViewport(rect.center);
+        pendingFocusNodeId = string.Empty;
+        return true;
+    }
+
+    private bool TryCenterGraph()
+    {
+        if (!pendingCenterGraph || !TryGetGraphBounds(out Rect graphBounds))
+        {
+            return false;
+        }
+
+        CenterPointInViewport(graphBounds.center);
+        pendingCenterGraph = false;
+        return true;
     }
 
     public void SelectNode(string nodeId)
@@ -328,6 +357,14 @@ internal sealed class GraphCanvasView : VisualElement
         isPanning = false;
     }
 
+    private void OnGeometryChanged(GeometryChangedEvent evt)
+    {
+        if (!TryFocusPendingNode())
+        {
+            TryCenterGraph();
+        }
+    }
+
     private void OnWheel(WheelEvent evt)
     {
         if (!TryApplyZoom(evt.delta.y > 0f ? -0.08f : 0.08f, evt.localMousePosition))
@@ -378,6 +415,57 @@ internal sealed class GraphCanvasView : VisualElement
         }
 
         return new Vector2(width * 0.5f, height * 0.5f);
+    }
+
+    private void CenterPointInViewport(Vector2 targetCenter)
+    {
+        if (layout.width <= 0f || layout.height <= 0f)
+        {
+            return;
+        }
+
+        Vector2 viewportCenter = new Vector2(layout.width * 0.5f, layout.height * 0.5f);
+        Vector2 transformOrigin = GetViewportTransformOrigin();
+        pan = viewportCenter - transformOrigin - ((targetCenter - transformOrigin) * zoom);
+        ApplyTransform();
+    }
+
+    private bool TryGetGraphBounds(out Rect bounds)
+    {
+        bounds = default;
+        bool hasBounds = false;
+
+        foreach (Rect rect in nodeRects.Values)
+        {
+            bounds = hasBounds ? Encapsulate(bounds, rect) : rect;
+            hasBounds = true;
+        }
+
+        if (layoutResult != null && layoutResult.ClusterBounds != null)
+        {
+            foreach (Rect rect in layoutResult.ClusterBounds.Values)
+            {
+                bounds = hasBounds ? Encapsulate(bounds, rect) : rect;
+                hasBounds = true;
+            }
+        }
+
+        if (!hasBounds && layoutResult != null && layoutResult.ContentSize != Vector2.zero)
+        {
+            bounds = new Rect(Vector2.zero, layoutResult.ContentSize);
+            hasBounds = true;
+        }
+
+        return hasBounds;
+    }
+
+    private static Rect Encapsulate(Rect a, Rect b)
+    {
+        float xMin = Mathf.Min(a.xMin, b.xMin);
+        float yMin = Mathf.Min(a.yMin, b.yMin);
+        float xMax = Mathf.Max(a.xMax, b.xMax);
+        float yMax = Mathf.Max(a.yMax, b.yMax);
+        return Rect.MinMaxRect(xMin, yMin, xMax, yMax);
     }
 
     private void OnGenerateEdgeVisuals(MeshGenerationContext context)

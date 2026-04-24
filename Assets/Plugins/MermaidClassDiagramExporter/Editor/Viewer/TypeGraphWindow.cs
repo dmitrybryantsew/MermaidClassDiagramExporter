@@ -22,6 +22,7 @@ public sealed class TypeGraphWindow : EditorWindow
     private ToolbarButton focusDepthOneButton;
     private ToolbarButton focusDepthTwoButton;
     private ToolbarButton focusDepthThreeButton;
+    private ToolbarButton centerGraphButton;
     private ToolbarButton backButton;
     private ToolbarButton resetButton;
     private GraphSourceKind currentSourceKind = GraphSourceKind.Unknown;
@@ -100,8 +101,10 @@ public sealed class TypeGraphWindow : EditorWindow
         toolbar.Add(focusDepthTwoButton);
         toolbar.Add(focusDepthThreeButton);
 
+        centerGraphButton = new ToolbarButton(CenterCurrentGraph) { text = "Center Graph" };
         backButton = new ToolbarButton(GoBackToPreviousGraph) { text = "Back" };
         resetButton = new ToolbarButton(ResetToRootGraph) { text = "Reset To Root" };
+        toolbar.Add(centerGraphButton);
         toolbar.Add(backButton);
         toolbar.Add(resetButton);
 
@@ -263,6 +266,7 @@ public sealed class TypeGraphWindow : EditorWindow
         {
             currentSelectedNodeId = selectedNodeId;
             canvasView?.SelectNode(selectedNodeId);
+            canvasView?.FocusNode(selectedNodeId);
         }
 
         if (statusLabel != null)
@@ -346,18 +350,25 @@ public sealed class TypeGraphWindow : EditorWindow
         SetDisplayedGraph(rootGraph, currentSelectedNodeId);
     }
 
+    private void CenterCurrentGraph()
+    {
+        canvasView?.CenterGraph();
+    }
+
     private void UpdateToolbarState()
     {
         bool hasCurrentSelection = !string.IsNullOrEmpty(currentSelectedNodeId);
         bool isCurrentSelectionSeed = seedSelectionState.Contains(currentSelectedNodeId);
         IReadOnlyList<string> focusSeedIds = ResolveFocusSeedIds();
         bool canFocusSelection = focusNavigationController.CanFocusSelection(focusSeedIds);
+        bool hasGraph = currentGraph != null && currentGraph.Nodes != null && currentGraph.Nodes.Count > 0;
         addSeedButton?.SetEnabled(hasCurrentSelection && !isCurrentSelectionSeed);
         removeSeedButton?.SetEnabled(hasCurrentSelection && isCurrentSelectionSeed);
         clearSeedsButton?.SetEnabled(seedSelectionState.HasSeeds);
         focusDepthOneButton?.SetEnabled(canFocusSelection);
         focusDepthTwoButton?.SetEnabled(canFocusSelection);
         focusDepthThreeButton?.SetEnabled(canFocusSelection);
+        centerGraphButton?.SetEnabled(hasGraph);
         backButton?.SetEnabled(focusNavigationController.CanGoBack());
         resetButton?.SetEnabled(focusNavigationController.RootGraph != null
             && focusNavigationController.CurrentGraph != null
